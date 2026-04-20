@@ -913,7 +913,9 @@
 
     let filtered = [...sessions].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
     if (filterStatuses.size > 0) filtered = filtered.filter(s => filterStatuses.has(s.status));
-    if (filterPlayer)   filtered = filtered.filter(s => filterPlayer === "gast" ? (s.guestActive && s.guestName.trim()) : s.attendees.includes(filterPlayer));
+    if (filterPlayer)   filtered = filtered.filter(s => filterPlayer === "gast"
+      ? (s.guestActive && s.guestName.trim())
+      : !s.availability?.[filterPlayer] || s.availability[filterPlayer] === "available");
     if (filterLocation) filtered = filtered.filter(s => s.loc === filterLocation);
 
     if (filtered.length === 0) {
