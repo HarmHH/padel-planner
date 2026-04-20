@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Padel Planner</title>
+  <style>
+    :root {
+      --navy:       #0B2D5C;
+      --navy-dark:  #071D3F;
+      --navy-mid:   #143870;
+      --cyan:       #00C8C8;
+      --cyan-light: #00DEDE;
+      --white:      #FFFFFF;
+      --bg:         #F2F6FC;
+      --border:     #D0DDEF;
+      --muted:      #5A7099;
+      --danger:     #E05555;
+      --radius:     14px;
+      --shadow:     0 4px 20px rgba(11,45,92,.10);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--navy-dark);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--navy);
+      color: var(--white);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 68px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 12px rgba(7,29,63,.4);
+    }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo-icon { width: 38px; height: 38px; flex-shrink: 0; }
+    .logo-icon svg { width: 38px; height: 38px; }
+    .logo-text h1 { font-size: 18px; font-weight: 700; letter-spacing: .4px; line-height: 1.1; }
+    .logo-text span { font-size: 11px; color: var(--cyan); letter-spacing: 1.5px; text-transform: uppercase; font-weight: 500; }
+
+    .btn-add-main {
+      background: var(--cyan);
+      color: var(--navy-dark);
+      border: none;
+      border-radius: 8px;
+      padding: 9px 18px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background .15s, transform .1s;
+      white-space: nowrap;
+    }
+    .btn-add-main:hover { background: var(--cyan-light); transform: translateY(-1px); }
+
+    /* ── Layout ── */
+    main { max-width: 780px; margin: 28px auto; padding: 0 16px 80px; }
+
+    /* ── Toolbar (filters + collapse) ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+    .filter-group { display: flex; align-items: center; gap: 8px; flex: 1; flex-wrap: wrap; }
+
+    .filter-select {
+      padding: 7px 10px;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--navy-dark);
+      background: var(--white);
+      outline: none;
+      cursor: pointer;
+      transition: border-color .15s, background .15s, color .15s;
+      min-width: 120px;
+    }
+    .filter-select:focus { border-color: var(--cyan); }
+    .filter-select.has-value { border-color: var(--navy); background: var(--navy); color: var(--white); }
+
+    .btn-collapse {
+      padding: 7px 14px;
+      border: 2px solid var(--border);
+      background: var(--white);
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--navy-dark);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all .15s;
+      white-space: nowrap;
+    }
+    .btn-collapse:hover { border-color: var(--navy); color: var(--navy); }
+    .btn-collapse.active { background: var(--navy); border-color: var(--navy); color: var(--white); }
+    .btn-collapse svg { transition: transform .2s; }
+    .btn-collapse.active svg { transform: rotate(180deg); }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    /* ── Empty state ── */
+    .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+    .empty-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty p { font-size: 15px; }
+
+    /* ── Session Card — Expanded ── */
+    .session-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      margin-bottom: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      transition: box-shadow .2s;
+    }
+    .session-card:hover { box-shadow: 0 8px 28px rgba(11,45,92,.14); }
+
+    .card-header {
+      background: var(--navy);
+      color: var(--white);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .card-date-info { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; }
+    .date-block { background: var(--navy-dark); border-radius: 8px; padding: 6px 10px; text-align: center; min-width: 54px; flex-shrink: 0; }
+    .date-block .day { font-size: 22px; font-weight: 800; line-height: 1; }
+    .date-block .month { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--cyan); margin-top: 2px; }
+    .date-meta { flex: 1; min-width: 0; }
+    .date-meta .time { font-size: 16px; font-weight: 700; }
+    .date-meta .loc {
+      font-size: 12px;
+      color: rgba(255,255,255,.65);
+      margin-top: 3px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .loc-pin { flex-shrink: 0; }
+    .loc-clickable {
+      cursor: pointer;
+      border-bottom: 1px dashed rgba(255,255,255,.35);
+      transition: color .15s, border-color .15s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .loc-clickable:hover { color: var(--white); border-bottom-color: var(--cyan); }
+    .loc-inline-select {
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.35);
+      color: var(--white);
+      border-radius: 5px;
+      padding: 2px 6px;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      cursor: pointer;
+      max-width: 180px;
+    }
+    .loc-inline-select option { color: var(--navy-dark); background: var(--white); }
+
+    .card-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+    /* ── Status badges ── */
+    .status-badge {
+      padding: 5px 11px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .4px;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all .15s;
+      white-space: nowrap;
+    }
+    .status-badge.optie    { background: rgba(255,190,60,.18); color: #FFCE60; border-color: rgba(255,190,60,.4); }
+    .status-badge.optie:hover { background: rgba(255,190,60,.30); border-color: #FFCE60; }
+    .status-badge.te-boeken { background: rgba(255,255,255,.12); color: rgba(255,255,255,.85); border-color: rgba(255,255,255,.25); }
+    .status-badge.te-boeken:hover { background: rgba(0,200,200,.2); border-color: var(--cyan); color: var(--cyan); }
+    .status-badge.geboekt  { background: rgba(0,200,200,.2); color: var(--cyan); border-color: var(--cyan); }
+
+    .btn-icon {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,.45);
+      cursor: pointer;
+      padding: 5px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color .15s, background .15s;
+      line-height: 1;
+    }
+    .btn-icon:hover { color: var(--white); background: rgba(255,255,255,.1); }
+    .btn-icon.delete:hover { color: #ff8080; background: rgba(255,100,100,.12); }
+    .btn-icon.note-active { color: var(--cyan); }
+
+    /* ── Players Section ── */
+    .card-body { padding: 16px 20px 16px; }
+
+    .players-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 10px; }
+
+    .player-count {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-bottom: 12px;
+    }
+    .player-count.ok   { background: #E6FAF5; color: #007A5E; }
+    .player-count.low  { background: #FFF3E0; color: #B85C00; }
+    .player-count.over { background: #FDECEA; color: var(--danger); }
+
+    .players-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    .player-chip {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 13px;
+      border-radius: 40px;
+      border: 2px solid var(--border);
+      cursor: pointer;
+      transition: all .15s;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--navy-dark);
+      background: var(--bg);
+      user-select: none;
+    }
+    .player-chip:hover { border-color: var(--cyan); background: rgba(0,200,200,.06); }
+    .player-chip.active { background: var(--navy); border-color: var(--navy); color: var(--white); }
+    .player-chip.active .chip-dot { background: var(--cyan); }
+    .chip-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0; transition: background .15s; }
+    .player-chip:hover .chip-dot { background: var(--cyan); }
+
+    .guest-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; width: 100%; }
+    .guest-chip-toggle {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 13px;
+      border-radius: 40px;
+      border: 2px dashed var(--border);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      background: transparent;
+      transition: all .15s;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .guest-chip-toggle:hover { border-color: var(--cyan); color: var(--navy); }
+    .guest-chip-toggle.active { border-style: solid; border-color: var(--navy); background: var(--navy); color: var(--white); }
+    .guest-chip-toggle.active .chip-dot { background: var(--cyan); }
+
+    .guest-name-input {
+      flex: 1;
+      padding: 7px 12px;
+      border: 2px solid var(--border);
+      border-radius: 40px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--navy-dark);
+      outline: none;
+      transition: border-color .15s;
+    }
+    .guest-name-input:focus { border-color: var(--cyan); }
+    .guest-name-input::placeholder { color: var(--muted); }
+
+    /* ── Note section ── */
+    .note-section {
+      border-top: 1px solid var(--border);
+      padding: 12px 20px 14px;
+      background: #FAFCFF;
+    }
+    .note-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; }
+    .note-textarea {
+      width: 100%;
+      padding: 9px 12px;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--navy-dark);
+      outline: none;
+      resize: vertical;
+      min-height: 56px;
+      transition: border-color .15s;
+      background: var(--white);
+    }
+    .note-textarea:focus { border-color: var(--cyan); }
+    .note-textarea::placeholder { color: var(--muted); }
+
+    /* ── Collapsed card ── */
+    .card-compact {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 20px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .card-compact:hover { background: rgba(11,45,92,.02); }
+    .date-block-sm {
+      background: var(--navy);
+      border-radius: 7px;
+      padding: 5px 9px;
+      text-align: center;
+      min-width: 46px;
+      flex-shrink: 0;
+      color: var(--white);
+    }
+    .date-block-sm .day-sm { font-size: 17px; font-weight: 800; line-height: 1; }
+    .date-block-sm .month-sm { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--cyan); margin-top: 1px; }
+    .compact-info { flex: 1; min-width: 0; }
+    .compact-datetime { font-size: 14px; font-weight: 700; color: var(--navy-dark); }
+    .compact-loc { font-size: 12px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .compact-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .compact-count {
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 20px;
+    }
+    .compact-count.ok   { background: #E6FAF5; color: #007A5E; }
+    .compact-count.low  { background: #FFF3E0; color: #B85C00; }
+    .compact-count.over { background: #FDECEA; color: var(--danger); }
+    /* status badge on white bg (compact) */
+    .status-badge-sm {
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .4px;
+      text-transform: uppercase;
+      border: 2px solid transparent;
+      white-space: nowrap;
+    }
+    .status-badge-sm.optie     { background: #FFF8E6; color: #B87A00; border-color: #FFE5A0; }
+    .status-badge-sm.te-boeken { background: var(--bg); color: var(--muted); border-color: var(--border); }
+    .status-badge-sm.geboekt   { background: #E6FAFA; color: #007A7A; border-color: #A0E8E8; }
+
+    /* ── Modal / Form ── */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(7,29,63,.6);
+      backdrop-filter: blur(4px);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s;
+    }
+    .overlay.open { opacity: 1; pointer-events: all; }
+    .modal {
+      background: var(--white);
+      border-radius: 18px;
+      width: 100%;
+      max-width: 460px;
+      box-shadow: 0 20px 60px rgba(7,29,63,.35);
+      transform: translateY(20px);
+      transition: transform .25s;
+      overflow: hidden;
+    }
+    .overlay.open .modal { transform: translateY(0); }
+    .modal-header { background: var(--navy); color: var(--white); padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; }
+    .modal-header h2 { font-size: 17px; font-weight: 700; }
+    .modal-header .btn-icon { color: rgba(255,255,255,.6); }
+    .modal-body { padding: 24px; }
+    .form-row { margin-bottom: 18px; }
+    .form-row:last-child { margin-bottom: 0; }
+    .form-row label { display: block; font-size: 12px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+    .form-input { width: 100%; padding: 10px 14px; border: 2px solid var(--border); border-radius: 10px; font-size: 14px; font-family: inherit; color: var(--navy-dark); outline: none; transition: border-color .15s; background: var(--white); }
+    .form-input:focus { border-color: var(--cyan); }
+    .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+    .modal-footer { padding: 0 24px 24px; display: flex; gap: 10px; justify-content: flex-end; }
+    .btn-cancel { padding: 10px 20px; border: 2px solid var(--border); background: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; color: var(--muted); transition: all .15s; }
+    .btn-cancel:hover { border-color: var(--navy); color: var(--navy); }
+    .btn-submit { padding: 10px 24px; background: var(--navy); color: var(--white); border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; transition: background .15s; }
+    .btn-submit:hover { background: var(--navy-mid); }
+
+    /* ── Settings FAB ── */
+    .fab-settings {
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      z-index: 150;
+      width: 48px;
+      height: 48px;
+      background: var(--navy);
+      color: var(--white);
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 16px rgba(7,29,63,.35);
+      transition: background .15s, transform .2s;
+    }
+    .fab-settings:hover { background: var(--navy-mid); transform: rotate(30deg); }
+
+    /* ── Settings Drawer ── */
+    .settings-panel { position: fixed; inset: 0; z-index: 300; display: flex; pointer-events: none; }
+    .settings-panel.open { pointer-events: all; }
+    .settings-backdrop { position: absolute; inset: 0; background: rgba(7,29,63,.55); backdrop-filter: blur(3px); opacity: 0; transition: opacity .25s; }
+    .settings-panel.open .settings-backdrop { opacity: 1; }
+    .settings-drawer {
+      position: relative;
+      z-index: 1;
+      width: 340px;
+      max-width: 90vw;
+      background: var(--white);
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      transform: translateX(-100%);
+      transition: transform .28s cubic-bezier(.4,0,.2,1);
+      box-shadow: 4px 0 30px rgba(7,29,63,.25);
+    }
+    .settings-panel.open .settings-drawer { transform: translateX(0); }
+    .settings-head { background: var(--navy); color: var(--white); padding: 20px 20px 20px 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .settings-head h2 { font-size: 17px; font-weight: 700; }
+    .settings-body { padding: 24px; overflow-y: auto; flex: 1; }
+    .settings-section-label { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+    .loc-list { margin-bottom: 18px; }
+    .loc-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; font-size: 14px; font-weight: 500; color: var(--navy-dark); background: var(--bg); }
+    .loc-item .loc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .loc-item.ntb { opacity: .65; font-style: italic; }
+    .btn-delete-loc { background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 6px; display: flex; align-items: center; transition: color .15s, background .15s; flex-shrink: 0; margin-left: 8px; }
+    .btn-delete-loc:hover { color: var(--danger); background: #FDECEA; }
+    .add-loc-row { display: flex; gap: 8px; }
+    .add-loc-input { flex: 1; padding: 10px 14px; border: 2px solid var(--border); border-radius: 10px; font-size: 14px; font-family: inherit; color: var(--navy-dark); outline: none; transition: border-color .15s; }
+    .add-loc-input:focus { border-color: var(--cyan); }
+    .add-loc-input::placeholder { color: var(--muted); }
+    .btn-add-loc { padding: 10px 16px; background: var(--cyan); color: var(--navy-dark); border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; transition: background .15s; white-space: nowrap; }
+    .btn-add-loc:hover { background: var(--cyan-light); }
+
+    /* ── Responsive ── */
+    @media (max-width: 540px) {
+      header { padding: 0 14px; }
+      .logo-text span { display: none; }
+      .form-row-2 { grid-template-columns: 1fr; }
+      .card-header { flex-wrap: wrap; gap: 8px; }
+      .filter-select { min-width: 100px; flex: 1; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="6"  cy="4"  r="2"   fill="#00C8C8"/>
+        <circle cx="12" cy="4"  r="2"   fill="#00C8C8"/>
+        <circle cx="18" cy="4"  r="2"   fill="#00C8C8"/>
+        <circle cx="24" cy="4"  r="2"   fill="#00C8C8"/>
+        <circle cx="6"  cy="10" r="2"   fill="#00C8C8"/>
+        <circle cx="12" cy="10" r="2"   fill="#00C8C8"/>
+        <circle cx="18" cy="10" r="2"   fill="#00C8C8"/>
+        <circle cx="24" cy="10" r="1.5" fill="#00C8C8" opacity=".7"/>
+        <circle cx="6"  cy="16" r="1.5" fill="#00C8C8" opacity=".7"/>
+        <circle cx="12" cy="16" r="1.5" fill="#00C8C8" opacity=".6"/>
+        <path d="M8 20 H20 Q26 20 26 26.5 Q26 33 20 33 H8 Z" fill="#0B2D5C"/>
+        <rect x="5" y="21" width="3" height="11" rx="1.5" fill="white"/>
+        <path d="M8 21 H19 Q24 21 24 26.5 Q24 32 19 32 H8 Z" fill="white"/>
+      </svg>
+    </div>
+    <div class="logo-text">
+      <h1>Padel Planner</h1>
+      <span>Team Sessies</span>
+    </div>
+  </div>
+  <button class="btn-add-main" onclick="openModal()">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+    Nieuwe sessie
+  </button>
+</header>
+
+<main>
+  <p class="section-title">Aankomende sessies</p>
+
+  <!-- Toolbar: filters + collapse toggle -->
+  <div class="toolbar">
+    <div class="filter-group">
+      <select id="filter-status" class="filter-select" onchange="applyFilters()">
+        <option value="">Alle statussen</option>
+        <option value="optie">Optie</option>
+        <option value="te-boeken">Te boeken</option>
+        <option value="geboekt">Geboekt</option>
+      </select>
+      <select id="filter-player" class="filter-select" onchange="applyFilters()">
+        <option value="">Alle spelers</option>
+      </select>
+      <select id="filter-location" class="filter-select" onchange="applyFilters()">
+        <option value="">Alle locaties</option>
+      </select>
+    </div>
+    <button class="btn-collapse" id="collapse-btn" onclick="toggleCollapse()" title="Inklappen / uitklappen">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M2 4.5l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span id="collapse-label">Inklappen</span>
+    </button>
+  </div>
+
+  <div id="sessions-list"></div>
+</main>
+
+<!-- Settings FAB -->
+<button class="fab-settings" onclick="openSettings()" title="Instellingen">
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <path d="M10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M16.2 12.3c.1-.2.1-.5.2-.8v-3c-.1-.3-.1-.5-.2-.8l1.6-1.4a.5.5 0 0 0 .1-.6l-1.5-2.6a.5.5 0 0 0-.6-.2l-1.9.8c-.4-.3-.9-.6-1.4-.8l-.3-2A.5.5 0 0 0 11.5 1h-3a.5.5 0 0 0-.5.4l-.3 2c-.5.2-1 .5-1.4.8l-1.9-.8a.5.5 0 0 0-.6.2L2.3 6.2a.5.5 0 0 0 .1.6l1.6 1.4c-.1.3-.1.6-.2.9v.8l.2.8-1.6 1.4a.5.5 0 0 0-.1.6l1.5 2.6c.1.2.4.3.6.2l1.9-.8c.4.3.9.5 1.4.8l.3 2c.1.2.3.4.5.4h3c.2 0 .4-.2.5-.4l.3-2c.5-.2 1-.5 1.4-.8l1.9.8c.2.1.5 0 .6-.2l1.5-2.6a.5.5 0 0 0-.1-.6l-1.5-1.4Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</button>
+
+<!-- Add Session Modal -->
+<div class="overlay" id="overlay" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Nieuwe sessie plannen</h2>
+      <button class="btn-icon" onclick="closeModal()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row-2">
+        <div class="form-row" style="margin-bottom:0">
+          <label>Datum</label>
+          <input type="date" id="f-date" class="form-input" />
+        </div>
+        <div class="form-row" style="margin-bottom:0">
+          <label>Tijd</label>
+          <input type="time" id="f-time" class="form-input" value="18:30" />
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:18px">
+        <label>Locatie</label>
+        <select id="f-loc" class="form-input"></select>
+      </div>
+      <div class="form-row">
+        <label>Status</label>
+        <select id="f-status" class="form-input">
+          <option value="optie" selected>Optie</option>
+          <option value="te-boeken">Te boeken</option>
+          <option value="geboekt">Geboekt</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal()">Annuleren</button>
+      <button class="btn-submit" onclick="addSession()">Sessie toevoegen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Drawer -->
+<div class="settings-panel" id="settings-panel">
+  <div class="settings-backdrop" onclick="closeSettings()"></div>
+  <div class="settings-drawer">
+    <div class="settings-head">
+      <h2>Instellingen</h2>
+      <button class="btn-icon" onclick="closeSettings()">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="settings-body">
+      <p class="settings-section-label">Locaties</p>
+      <div id="loc-list" class="loc-list"></div>
+      <div class="add-loc-row">
+        <input type="text" id="new-loc-input" class="add-loc-input" placeholder="Nieuwe locatie toevoegen..." />
+        <button class="btn-add-loc" onclick="addLocation()">Toevoegen</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const PLAYERS       = ["Joost", "Roy", "Thomas", "Niels", "Harm"];
+  const NEEDED        = 4;
+  const NTB           = "n.t.b.";
+  const DEFAULT_LOCS  = ["Racketsport Schiedam", "Nieuw Meerslot", "Meerzicht Zoetermeer"];
+  const STATUS_CYCLE  = ["optie", "te-boeken", "geboekt"];
+  const STATUS_LABELS = { optie: "Optie", "te-boeken": "Te boeken", geboekt: "✓ Geboekt" };
+
+  let sessions  = JSON.parse(localStorage.getItem("padel-sessions")  || "[]");
+  let locations = JSON.parse(localStorage.getItem("padel-locations") || "null");
+  if (!locations) { locations = [...DEFAULT_LOCS]; saveLocations(); }
+
+  // Migrate old sessions: add note field if missing
+  sessions = sessions.map(s => ({ note: "", ...s }));
+
+  // UI state
+  let isCollapsed       = false;
+  let editingLocationId = null;  // session id whose location is being edited inline
+  let openNoteIds       = new Set();
+
+  // Filter state
+  let filterStatus   = "";
+  let filterPlayer   = "";
+  let filterLocation = "";
+
+  function save()          { localStorage.setItem("padel-sessions",  JSON.stringify(sessions)); }
+  function saveLocations() { localStorage.setItem("padel-locations", JSON.stringify(locations)); }
+
+  /* ── All location options (n.t.b. always first) ── */
+  function allLocOptions() { return [NTB, ...locations]; }
+
+  /* ── Modal ── */
+  function openModal() {
+    document.getElementById("f-date").value  = new Date().toISOString().split("T")[0];
+    document.getElementById("f-time").value  = "18:30";
+    document.getElementById("f-status").value = "optie";
+    populateLocSelect();
+    document.getElementById("overlay").classList.add("open");
+  }
+  function closeModal() { document.getElementById("overlay").classList.remove("open"); }
+  function handleOverlayClick(e) { if (e.target === document.getElementById("overlay")) closeModal(); }
+
+  function populateLocSelect(selectedVal) {
+    const sel = document.getElementById("f-loc");
+    const opts = allLocOptions();
+    sel.innerHTML = opts.map(l => `<option value="${esc(l)}" ${l === selectedVal ? "selected" : ""}>${esc(l)}</option>`).join("");
+  }
+
+  function addSession() {
+    const date   = document.getElementById("f-date").value;
+    const time   = document.getElementById("f-time").value;
+    const loc    = document.getElementById("f-loc").value;
+    const status = document.getElementById("f-status").value;
+    if (!date || !time) { alert("Vul een datum en tijd in."); return; }
+    sessions.push({ id: Date.now().toString(), date, time, loc, status, attendees: [], guestActive: false, guestName: "", note: "" });
+    save(); closeModal(); render(); refreshFilterSelects();
+  }
+
+  /* ── Session actions ── */
+  function deleteSession(id) {
+    if (!confirm("Sessie verwijderen?")) return;
+    sessions = sessions.filter(s => s.id !== id);
+    openNoteIds.delete(id);
+    save(); render(); refreshFilterSelects();
+  }
+
+  function toggleAttendee(sessionId, player) {
+    const s = sessions.find(s => s.id === sessionId); if (!s) return;
+    const idx = s.attendees.indexOf(player);
+    if (idx === -1) s.attendees.push(player); else s.attendees.splice(idx, 1);
+    save(); render();
+  }
+
+  function toggleGuest(sessionId) {
+    const s = sessions.find(s => s.id === sessionId); if (!s) return;
+    s.guestActive = !s.guestActive;
+    if (!s.guestActive) s.guestName = "";
+    save(); render();
+    if (s.guestActive) setTimeout(() => { const el = document.getElementById("guest-input-" + sessionId); if (el) el.focus(); }, 30);
+  }
+
+  function updateGuestName(sessionId, value) {
+    const s = sessions.find(s => s.id === sessionId); if (!s) return;
+    s.guestName = value; save();
+  }
+
+  function toggleStatus(sessionId) {
+    const s = sessions.find(s => s.id === sessionId); if (!s) return;
+    const idx = STATUS_CYCLE.indexOf(s.status);
+    s.status = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
+    save(); render();
+  }
+
+  /* ── Inline location edit ── */
+  function startEditLocation(sessionId) {
+    editingLocationId = sessionId;
+    render();
+    setTimeout(() => { const el = document.getElementById("loc-sel-" + sessionId); if (el) el.focus(); }, 20);
+  }
+
+  function commitLocation(sessionId, value) {
+    const s = sessions.find(s => s.id === sessionId); if (s) { s.loc = value; save(); }
+    editingLocationId = null;
+    render(); refreshFilterSelects();
+  }
+
+  /* ── Note ── */
+  function toggleNote(sessionId) {
+    if (openNoteIds.has(sessionId)) openNoteIds.delete(sessionId);
+    else openNoteIds.add(sessionId);
+    render();
+    if (openNoteIds.has(sessionId)) {
+      setTimeout(() => { const el = document.getElementById("note-ta-" + sessionId); if (el) el.focus(); }, 20);
+    }
+  }
+
+  function updateNote(sessionId, value) {
+    const s = sessions.find(s => s.id === sessionId); if (!s) return;
+    s.note = value; save();
+  }
+
+  /* ── Collapse ── */
+  function toggleCollapse() {
+    isCollapsed = !isCollapsed;
+    const btn   = document.getElementById("collapse-btn");
+    const label = document.getElementById("collapse-label");
+    btn.classList.toggle("active", isCollapsed);
+    label.textContent = isCollapsed ? "Uitklappen" : "Inklappen";
+    render();
+  }
+
+  /* ── Filters ── */
+  function applyFilters() {
+    filterStatus   = document.getElementById("filter-status").value;
+    filterPlayer   = document.getElementById("filter-player").value;
+    filterLocation = document.getElementById("filter-location").value;
+
+    document.getElementById("filter-status").classList.toggle("has-value",   filterStatus   !== "");
+    document.getElementById("filter-player").classList.toggle("has-value",   filterPlayer   !== "");
+    document.getElementById("filter-location").classList.toggle("has-value", filterLocation !== "");
+    render();
+  }
+
+  function refreshFilterSelects() {
+    const playerSel = document.getElementById("filter-player");
+    const curPlayer = playerSel.value;
+    playerSel.innerHTML = `<option value="">Alle spelers</option>` +
+      PLAYERS.map(p => `<option value="${esc(p)}" ${p === curPlayer ? "selected" : ""}>${esc(p)}</option>`).join("") +
+      `<option value="gast" ${curPlayer === "gast" ? "selected" : ""}>Gast</option>`;
+
+    const locSel = document.getElementById("filter-location");
+    const curLoc = locSel.value;
+    locSel.innerHTML = `<option value="">Alle locaties</option>` +
+      allLocOptions().map(l => `<option value="${esc(l)}" ${l === curLoc ? "selected" : ""}>${esc(l)}</option>`).join("");
+  }
+
+  /* ── Settings ── */
+  function openSettings() { renderLocList(); document.getElementById("settings-panel").classList.add("open"); }
+  function closeSettings() { document.getElementById("settings-panel").classList.remove("open"); }
+
+  function renderLocList() {
+    document.getElementById("loc-list").innerHTML =
+      `<div class="loc-item ntb"><span class="loc-name">${esc(NTB)}</span><span style="font-size:11px;color:var(--muted)">standaard</span></div>` +
+      (locations.length === 0
+        ? `<p style="color:var(--muted);font-size:14px;margin-bottom:8px">Nog geen locaties.</p>`
+        : locations.map((l, i) => `
+            <div class="loc-item">
+              <span class="loc-name">${esc(l)}</span>
+              <button class="btn-delete-loc" onclick="deleteLocation(${i})" title="Verwijderen">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 3.5h12M4.5 3.5V2.5h5v1M5.5 6v4M8.5 6v4M1.5 3.5l.8 8.2a.9.9 0 0 0 .9.8h6.6a.9.9 0 0 0 .9-.8l.8-8.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>`).join(""));
+  }
+
+  function addLocation() {
+    const input = document.getElementById("new-loc-input");
+    const val = input.value.trim();
+    if (!val || val === NTB || locations.includes(val)) { input.value = ""; return; }
+    locations.push(val); saveLocations(); input.value = "";
+    renderLocList(); refreshFilterSelects();
+  }
+
+  function deleteLocation(idx) {
+    locations.splice(idx, 1); saveLocations();
+    renderLocList(); refreshFilterSelects();
+  }
+
+  document.getElementById("new-loc-input").addEventListener("keydown", e => { if (e.key === "Enter") addLocation(); });
+
+  /* ── Helpers ── */
+  function formatDate(dateStr) {
+    const d = new Date(dateStr + "T00:00:00");
+    const days   = ["zo","ma","di","wo","do","vr","za"];
+    const months = ["jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"];
+    return { dayNum: d.getDate(), month: months[d.getMonth()], weekday: days[d.getDay()] };
+  }
+
+  function esc(str) {
+    return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  function playerCount(s) {
+    return s.attendees.length + (s.guestActive && s.guestName.trim() ? 1 : 0);
+  }
+
+  /* ── Render ── */
+  function render() {
+    const list = document.getElementById("sessions-list");
+
+    let filtered = [...sessions].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+
+    if (filterStatus)   filtered = filtered.filter(s => s.status === filterStatus);
+    if (filterPlayer)   filtered = filtered.filter(s =>
+      filterPlayer === "gast" ? (s.guestActive && s.guestName.trim()) : s.attendees.includes(filterPlayer));
+    if (filterLocation) filtered = filtered.filter(s => s.loc === filterLocation);
+
+    if (filtered.length === 0) {
+      list.innerHTML = `<div class="empty"><div class="empty-icon">🎾</div><p>${sessions.length === 0
+        ? "Nog geen sessies gepland.<br>Klik op <strong>Nieuwe sessie</strong> om te beginnen."
+        : "Geen sessies gevonden voor dit filter."}</p></div>`;
+      return;
+    }
+
+    list.innerHTML = filtered.map(s => {
+      const fd     = formatDate(s.date);
+      const count  = playerCount(s);
+      const cClass = count === NEEDED ? "ok" : count > NEEDED ? "over" : "low";
+      const cLabel = count === NEEDED ? `✓ ${count}/${NEEDED}` : count > NEEDED ? `⚠ ${count}/${NEEDED}` : `${count}/${NEEDED}`;
+
+      if (isCollapsed) {
+        return `
+        <div class="session-card">
+          <div class="card-compact" onclick="toggleCollapseSingle()" title="Klik om uit te klappen">
+            <div class="date-block-sm">
+              <div class="day-sm">${fd.dayNum}</div>
+              <div class="month-sm">${fd.month}</div>
+            </div>
+            <div class="compact-info">
+              <div class="compact-datetime">${s.time} uur · ${fd.weekday}</div>
+              <div class="compact-loc">${esc(s.loc)}</div>
+            </div>
+            <div class="compact-right">
+              <span class="compact-count ${cClass}">${cLabel}</span>
+              <span class="status-badge-sm ${s.status}">${STATUS_LABELS[s.status] || s.status}</span>
+            </div>
+          </div>
+        </div>`;
+      }
+
+      // Expanded
+      const guestLabel = s.guestActive && s.guestName.trim() ? s.guestName : "Gast";
+      const noteOpen   = openNoteIds.has(s.id) || !!s.note;
+      const hasNote    = !!s.note;
+
+      const locDisplay = editingLocationId === s.id
+        ? `<select id="loc-sel-${s.id}" class="loc-inline-select"
+               onchange="commitLocation('${s.id}', this.value)"
+               onblur="commitLocation('${s.id}', this.value)">
+             ${allLocOptions().map(l => `<option value="${esc(l)}" ${l === s.loc ? "selected" : ""}>${esc(l)}</option>`).join("")}
+           </select>`
+        : `<span class="loc-clickable" onclick="startEditLocation('${s.id}')" title="Klik om locatie te wijzigen">${esc(s.loc)}</span>`;
+
+      const playerChips = PLAYERS.map(p => {
+        const active = s.attendees.includes(p);
+        return `<div class="player-chip ${active ? "active" : ""}" onclick="toggleAttendee('${s.id}','${p}')"><span class="chip-dot"></span>${p}</div>`;
+      }).join("");
+
+      const noteSection = noteOpen ? `
+        <div class="note-section">
+          <p class="note-label">Notitie</p>
+          <textarea class="note-textarea" id="note-ta-${s.id}"
+            placeholder="Baan nummer, bijzonderheden..."
+            oninput="updateNote('${s.id}', this.value)">${esc(s.note)}</textarea>
+        </div>` : "";
+
+      return `
+      <div class="session-card">
+        <div class="card-header">
+          <div class="card-date-info">
+            <div class="date-block">
+              <div class="day">${fd.dayNum}</div>
+              <div class="month">${fd.month}</div>
+            </div>
+            <div class="date-meta">
+              <div class="time">${s.time} uur · ${fd.weekday}</div>
+              <div class="loc">
+                <svg class="loc-pin" width="10" height="13" viewBox="0 0 11 13" fill="none"><path d="M5.5 0C3.01 0 1 2.01 1 4.5c0 3.37 4.5 8.5 4.5 8.5S10 7.87 10 4.5C10 2.01 7.99 0 5.5 0Zm0 6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z" fill="currentColor"/></svg>
+                ${locDisplay}
+              </div>
+            </div>
+          </div>
+          <div class="card-actions">
+            <span class="status-badge ${s.status}" onclick="toggleStatus('${s.id}')" title="Klik om status te wijzigen">${STATUS_LABELS[s.status]}</span>
+            <button class="btn-icon ${hasNote ? "note-active" : ""}" onclick="toggleNote('${s.id}')" title="${noteOpen ? "Notitie verbergen" : "Notitie toevoegen"}">
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                <rect x="2" y="1.5" width="11" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/>
+                <path d="M4.5 5h6M4.5 7.5h6M4.5 10h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                ${hasNote ? `<circle cx="12" cy="3" r="2.5" fill="var(--cyan)"/>` : ""}
+              </svg>
+            </button>
+            <button class="btn-icon delete" onclick="deleteSession('${s.id}')" title="Verwijderen">
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M1 3.5h13M5 3.5V2h5v1.5M6 6.5v4M9 6.5v4M2 3.5l.9 9.1A1 1 0 0 0 3.9 13.5h7.2a1 1 0 0 0 1-.9l.9-9.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="player-count ${cClass}">${count === NEEDED ? `✓ ${count}/${NEEDED} spelers` : count > NEEDED ? `⚠ ${count}/${NEEDED} — te veel` : `${count}/${NEEDED} spelers`}</div>
+          <p class="players-label">Spelers</p>
+          <div class="players-grid">
+            ${playerChips}
+            <div class="guest-row">
+              <div class="guest-chip-toggle ${s.guestActive ? "active" : ""}" onclick="toggleGuest('${s.id}')">
+                <span class="chip-dot"></span>${guestLabel}
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="margin-left:2px;opacity:.6"><circle cx="5" cy="3" r="2" stroke="currentColor" stroke-width="1.4"/><path d="M1 9c0-2.21 1.79-4 4-4s4 1.79 4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </div>
+              ${s.guestActive ? `<input class="guest-name-input" id="guest-input-${s.id}" type="text" placeholder="Naam gast..." value="${esc(s.guestName)}" oninput="updateGuestName('${s.id}', this.value)" />` : ""}
+            </div>
+          </div>
+        </div>
+        ${noteSection}
+      </div>`;
+    }).join("");
+  }
+
+  function toggleCollapseSingle() {
+    // clicking a collapsed card expands all (since it's a global toggle)
+    isCollapsed = false;
+    document.getElementById("collapse-btn").classList.remove("active");
+    document.getElementById("collapse-label").textContent = "Inklappen";
+    render();
+  }
+
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); closeSettings(); } });
+
+  refreshFilterSelects();
+  render();
+</script>
+</body>
+</html>
