@@ -617,7 +617,25 @@
   </div>
 </div>
 
-<script>
+<script type="module">
+  import { initializeApp }                                          from "https://www.gstatic.com/firebasejs/12.12.0/firebase-app.js";
+  import { getFirestore, collection, doc, addDoc, updateDoc,
+           deleteDoc, onSnapshot }                                  from "https://www.gstatic.com/firebasejs/12.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey:            "AIzaSyAWeSAVJARUH-e5wRMJ-AVTdrBI9UmQt5c",
+    authDomain:        "padel-planner-4f041.firebaseapp.com",
+    projectId:         "padel-planner-4f041",
+    storageBucket:     "padel-planner-4f041.firebasestorage.app",
+    messagingSenderId: "891388069422",
+    appId:             "1:891388069422:web:fb10d88db5d28617ab81bf"
+  };
+
+  const app         = initializeApp(firebaseConfig);
+  const db          = getFirestore(app);
+  const sessionsCol = collection(db, "sessions");
+
+  /* ── Constants ── */
   const PLAYERS       = ["Joost", "Roy", "Thomas", "Niels", "Harm"];
   const NEEDED        = 4;
   const NTB           = "n.t.b.";
@@ -625,33 +643,42 @@
   const STATUS_CYCLE  = ["optie", "te-boeken", "geboekt"];
   const STATUS_LABELS = { optie: "Optie", "te-boeken": "Te boeken", geboekt: "✓ Geboekt" };
 
-  let sessions  = JSON.parse(localStorage.getItem("padel-sessions")  || "[]");
+  /* ── State ── */
+  let sessions  = [];
   let locations = JSON.parse(localStorage.getItem("padel-locations") || "null");
   if (!locations) { locations = [...DEFAULT_LOCS]; saveLocations(); }
 
-  // Migrate old sessions: add note field if missing
-  sessions = sessions.map(s => ({ note: "", ...s }));
-
-  // UI state
-  let expandedIds       = new Set();  // only listed IDs are expanded; default = all collapsed
+  let expandedIds       = new Set();
   let editingLocationId = null;
   let openNoteIds       = new Set();
+  let filterStatus      = "";
+  let filterPlayer      = "";
+  let filterLocation    = "";
 
-  // Filter state
-  let filterStatus   = "";
-  let filterPlayer   = "";
-  let filterLocation = "";
-
-  function save()          { localStorage.setItem("padel-sessions",  JSON.stringify(sessions)); }
+  /* ── Firestore helpers ── */
   function saveLocations() { localStorage.setItem("padel-locations", JSON.stringify(locations)); }
-
-  /* ── All location options (n.t.b. always first) ── */
   function allLocOptions() { return [NTB, ...locations]; }
+
+  function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+  async function fsAdd(data)        { return await addDoc(sessionsCol, data); }
+  async function fsUpdate(id, data) { await updateDoc(doc(db, "sessions", id), data); }
+  async function fsDelete(id)       { await deleteDoc(doc(db, "sessions", id)); }
+
+  /* ── Real-time listener — drives all rendering ── */
+  onSnapshot(sessionsCol, snapshot => {
+    sessions = snapshot.docs.map(d => ({
+      note: "", guestActive: false, guestName: "", attendees: [],
+      ...d.data(), id: d.id
+    }));
+    render();
+    refreshFilterSelects();
+  }, err => console.error("Firestore:", err));
 
   /* ── Modal ── */
   function openModal() {
-    document.getElementById("f-date").value  = new Date().toISOString().split("T")[0];
-    document.getElementById("f-time").value  = "18:30";
+    document.getElementById("f-date").value   = new Date().toISOString().split("T")[0];
+    document.getElementById("f-time").value   = "18:30";
     document.getElementById("f-status").value = "optie";
     populateLocSelect();
     document.getElementById("overlay").classList.add("open");
@@ -659,104 +686,95 @@
   function closeModal() { document.getElementById("overlay").classList.remove("open"); }
   function handleOverlayClick(e) { if (e.target === document.getElementById("overlay")) closeModal(); }
 
-  function populateLocSelect(selectedVal) {
+  function populateLocSelect() {
     const sel = document.getElementById("f-loc");
-    const opts = allLocOptions();
-    sel.innerHTML = opts.map(l => `<option value="${esc(l)}" ${l === selectedVal ? "selected" : ""}>${esc(l)}</option>`).join("");
+    sel.innerHTML = allLocOptions().map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join("");
   }
 
-  function addSession() {
+  async function addSession() {
     const date   = document.getElementById("f-date").value;
     const time   = document.getElementById("f-time").value;
     const loc    = document.getElementById("f-loc").value;
     const status = document.getElementById("f-status").value;
     if (!date || !time) { alert("Vul een datum en tijd in."); return; }
-    sessions.push({ id: Date.now().toString(), date, time, loc, status, attendees: [], guestActive: false, guestName: "", note: "" });
-    save(); closeModal(); render(); refreshFilterSelects();
+    closeModal();
+    await fsAdd({ date, time, loc, status, attendees: [], guestActive: false, guestName: "", note: "" });
   }
 
-  /* ── Session actions ── */
-  function deleteSession(id) {
+  /* ── Session mutations (optimistic local update + Firestore write) ── */
+  async function deleteSession(id) {
     if (!confirm("Sessie verwijderen?")) return;
+    expandedIds.delete(id); openNoteIds.delete(id);
     sessions = sessions.filter(s => s.id !== id);
-    openNoteIds.delete(id);
-    save(); render(); refreshFilterSelects();
+    render();
+    await fsDelete(id);
   }
 
   function toggleAttendee(sessionId, player) {
     const s = sessions.find(s => s.id === sessionId); if (!s) return;
     const idx = s.attendees.indexOf(player);
     if (idx === -1) s.attendees.push(player); else s.attendees.splice(idx, 1);
-    save(); render();
+    render();
+    fsUpdate(sessionId, { attendees: s.attendees });
   }
 
   function toggleGuest(sessionId) {
     const s = sessions.find(s => s.id === sessionId); if (!s) return;
     s.guestActive = !s.guestActive;
     if (!s.guestActive) s.guestName = "";
-    save(); render();
-    if (s.guestActive) setTimeout(() => { const el = document.getElementById("guest-input-" + sessionId); if (el) el.focus(); }, 30);
+    render();
+    fsUpdate(sessionId, { guestActive: s.guestActive, guestName: s.guestName });
+    if (s.guestActive) setTimeout(() => { document.getElementById("guest-input-" + sessionId)?.focus(); }, 30);
   }
 
+  const debouncedGuestSave = debounce((id, val) => fsUpdate(id, { guestName: val }), 700);
   function updateGuestName(sessionId, value) {
     const s = sessions.find(s => s.id === sessionId); if (!s) return;
-    s.guestName = value; save();
+    s.guestName = value;
+    debouncedGuestSave(sessionId, value);
   }
 
   function toggleStatus(sessionId) {
     const s = sessions.find(s => s.id === sessionId); if (!s) return;
-    const idx = STATUS_CYCLE.indexOf(s.status);
-    s.status = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
-    save(); render();
+    s.status = STATUS_CYCLE[(STATUS_CYCLE.indexOf(s.status) + 1) % STATUS_CYCLE.length];
+    render();
+    fsUpdate(sessionId, { status: s.status });
   }
 
-  /* ── Inline location edit ── */
   function startEditLocation(sessionId) {
-    editingLocationId = sessionId;
-    render();
-    setTimeout(() => { const el = document.getElementById("loc-sel-" + sessionId); if (el) el.focus(); }, 20);
+    editingLocationId = sessionId; render();
+    setTimeout(() => { document.getElementById("loc-sel-" + sessionId)?.focus(); }, 20);
   }
 
   function commitLocation(sessionId, value) {
-    const s = sessions.find(s => s.id === sessionId); if (s) { s.loc = value; save(); }
-    editingLocationId = null;
-    render(); refreshFilterSelects();
+    const s = sessions.find(s => s.id === sessionId);
+    if (s) { s.loc = value; fsUpdate(sessionId, { loc: value }); }
+    editingLocationId = null; render(); refreshFilterSelects();
   }
 
-  /* ── Note ── */
   function toggleNote(sessionId) {
-    if (openNoteIds.has(sessionId)) openNoteIds.delete(sessionId);
-    else openNoteIds.add(sessionId);
+    if (openNoteIds.has(sessionId)) openNoteIds.delete(sessionId); else openNoteIds.add(sessionId);
     render();
-    if (openNoteIds.has(sessionId)) {
-      setTimeout(() => { const el = document.getElementById("note-ta-" + sessionId); if (el) el.focus(); }, 20);
-    }
+    if (openNoteIds.has(sessionId)) setTimeout(() => { document.getElementById("note-ta-" + sessionId)?.focus(); }, 20);
   }
 
+  const debouncedNoteSave = debounce((id, val) => fsUpdate(id, { note: val }), 700);
   function updateNote(sessionId, value) {
     const s = sessions.find(s => s.id === sessionId); if (!s) return;
-    s.note = value; save();
+    s.note = value;
+    debouncedNoteSave(sessionId, value);
   }
 
-  /* ── Per-session expand/collapse ── */
+  /* ── Expand / collapse ── */
   function toggleSession(id) {
-    if (expandedIds.has(id)) {
-      expandedIds.delete(id);
-      openNoteIds.delete(id);  // close note when collapsing
-    } else {
-      expandedIds.add(id);
-    }
+    if (expandedIds.has(id)) { expandedIds.delete(id); openNoteIds.delete(id); }
+    else expandedIds.add(id);
     render();
   }
 
-  /* ── Collapse all / expand all toggle ── */
   function toggleCollapse() {
-    if (expandedIds.size > 0) {
-      expandedIds.clear();
-      openNoteIds.clear();
-    } else {
-      sessions.forEach(s => expandedIds.add(s.id));
-    }
+    if (expandedIds.size > 0) { expandedIds.clear(); openNoteIds.clear(); }
+    else sessions.forEach(s => expandedIds.add(s.id));
     render();
   }
 
@@ -765,7 +783,6 @@
     filterStatus   = document.getElementById("filter-status").value;
     filterPlayer   = document.getElementById("filter-player").value;
     filterLocation = document.getElementById("filter-location").value;
-
     document.getElementById("filter-status").classList.toggle("has-value",   filterStatus   !== "");
     document.getElementById("filter-player").classList.toggle("has-value",   filterPlayer   !== "");
     document.getElementById("filter-location").classList.toggle("has-value", filterLocation !== "");
@@ -773,47 +790,38 @@
   }
 
   function refreshFilterSelects() {
-    const playerSel = document.getElementById("filter-player");
-    const curPlayer = playerSel.value;
-    playerSel.innerHTML = `<option value="">Alle spelers</option>` +
-      PLAYERS.map(p => `<option value="${esc(p)}" ${p === curPlayer ? "selected" : ""}>${esc(p)}</option>`).join("") +
-      `<option value="gast" ${curPlayer === "gast" ? "selected" : ""}>Gast</option>`;
-
-    const locSel = document.getElementById("filter-location");
-    const curLoc = locSel.value;
-    locSel.innerHTML = `<option value="">Alle locaties</option>` +
-      allLocOptions().map(l => `<option value="${esc(l)}" ${l === curLoc ? "selected" : ""}>${esc(l)}</option>`).join("");
+    const pSel = document.getElementById("filter-player"), pCur = pSel.value;
+    pSel.innerHTML = `<option value="">Alle spelers</option>` +
+      PLAYERS.map(p => `<option value="${esc(p)}" ${p===pCur?"selected":""}>${esc(p)}</option>`).join("") +
+      `<option value="gast" ${pCur==="gast"?"selected":""}>Gast</option>`;
+    const lSel = document.getElementById("filter-location"), lCur = lSel.value;
+    lSel.innerHTML = `<option value="">Alle locaties</option>` +
+      allLocOptions().map(l => `<option value="${esc(l)}" ${l===lCur?"selected":""}>${esc(l)}</option>`).join("");
   }
 
   /* ── Settings ── */
-  function openSettings() { renderLocList(); document.getElementById("settings-panel").classList.add("open"); }
+  function openSettings()  { renderLocList(); document.getElementById("settings-panel").classList.add("open"); }
   function closeSettings() { document.getElementById("settings-panel").classList.remove("open"); }
 
   function renderLocList() {
     document.getElementById("loc-list").innerHTML =
       `<div class="loc-item ntb"><span class="loc-name">${esc(NTB)}</span><span style="font-size:11px;color:var(--muted)">standaard</span></div>` +
-      (locations.length === 0
-        ? `<p style="color:var(--muted);font-size:14px;margin-bottom:8px">Nog geen locaties.</p>`
-        : locations.map((l, i) => `
-            <div class="loc-item">
-              <span class="loc-name">${esc(l)}</span>
-              <button class="btn-delete-loc" onclick="deleteLocation(${i})" title="Verwijderen">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 3.5h12M4.5 3.5V2.5h5v1M5.5 6v4M8.5 6v4M1.5 3.5l.8 8.2a.9.9 0 0 0 .9.8h6.6a.9.9 0 0 0 .9-.8l.8-8.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </button>
-            </div>`).join(""));
+      (locations.length === 0 ? `<p style="color:var(--muted);font-size:14px;margin-bottom:8px">Nog geen locaties.</p>`
+        : locations.map((l, i) => `<div class="loc-item"><span class="loc-name">${esc(l)}</span>
+            <button class="btn-delete-loc" onclick="window.deleteLocation(${i})" title="Verwijderen">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 3.5h12M4.5 3.5V2.5h5v1M5.5 6v4M8.5 6v4M1.5 3.5l.8 8.2a.9.9 0 0 0 .9.8h6.6a.9.9 0 0 0 .9-.8l.8-8.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button></div>`).join(""));
   }
 
   function addLocation() {
-    const input = document.getElementById("new-loc-input");
-    const val = input.value.trim();
+    const input = document.getElementById("new-loc-input"), val = input.value.trim();
     if (!val || val === NTB || locations.includes(val)) { input.value = ""; return; }
     locations.push(val); saveLocations(); input.value = "";
     renderLocList(); refreshFilterSelects();
   }
 
   function deleteLocation(idx) {
-    locations.splice(idx, 1); saveLocations();
-    renderLocList(); refreshFilterSelects();
+    locations.splice(idx, 1); saveLocations(); renderLocList(); refreshFilterSelects();
   }
 
   document.getElementById("new-loc-input").addEventListener("keydown", e => { if (e.key === "Enter") addLocation(); });
@@ -821,25 +829,15 @@
   /* ── Helpers ── */
   function formatDate(dateStr) {
     const d = new Date(dateStr + "T00:00:00");
-    const days   = ["zo","ma","di","wo","do","vr","za"];
-    const months = ["jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"];
-    return { dayNum: d.getDate(), month: months[d.getMonth()], weekday: days[d.getDay()] };
+    return { dayNum: d.getDate(), month: ["jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"][d.getMonth()], weekday: ["zo","ma","di","wo","do","vr","za"][d.getDay()] };
   }
-
-  function esc(str) {
-    return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-  }
-
-  function playerCount(s) {
-    return s.attendees.length + (s.guestActive && s.guestName.trim() ? 1 : 0);
-  }
+  function esc(str) { return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function playerCount(s) { return s.attendees.length + (s.guestActive && s.guestName.trim() ? 1 : 0); }
 
   function syncCollapseBtn() {
-    const btn   = document.getElementById("collapse-btn");
-    const label = document.getElementById("collapse-label");
-    const anyExpanded = expandedIds.size > 0;
-    btn.classList.toggle("active", anyExpanded);
-    label.textContent = anyExpanded ? "Inklappen" : "Uitklappen";
+    const any = expandedIds.size > 0;
+    document.getElementById("collapse-btn").classList.toggle("active", any);
+    document.getElementById("collapse-label").textContent = any ? "Inklappen" : "Uitklappen";
   }
 
   /* ── Render ── */
@@ -848,10 +846,8 @@
     syncCollapseBtn();
 
     let filtered = [...sessions].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-
     if (filterStatus)   filtered = filtered.filter(s => s.status === filterStatus);
-    if (filterPlayer)   filtered = filtered.filter(s =>
-      filterPlayer === "gast" ? (s.guestActive && s.guestName.trim()) : s.attendees.includes(filterPlayer));
+    if (filterPlayer)   filtered = filtered.filter(s => filterPlayer === "gast" ? (s.guestActive && s.guestName.trim()) : s.attendees.includes(filterPlayer));
     if (filterLocation) filtered = filtered.filter(s => s.loc === filterLocation);
 
     if (filtered.length === 0) {
@@ -862,19 +858,14 @@
     }
 
     list.innerHTML = filtered.map(s => {
-      const fd     = formatDate(s.date);
-      const count  = playerCount(s);
+      const fd = formatDate(s.date), count = playerCount(s);
       const cClass = count === NEEDED ? "ok" : count > NEEDED ? "over" : "low";
       const cLabel = count === NEEDED ? `✓ ${count}/${NEEDED}` : count > NEEDED ? `⚠ ${count}/${NEEDED}` : `${count}/${NEEDED}`;
 
-      if (!expandedIds.has(s.id)) {
-        return `
+      if (!expandedIds.has(s.id)) return `
         <div class="session-card">
-          <div class="card-compact" onclick="toggleSession('${s.id}')" title="Klik om uit te klappen">
-            <div class="date-block-sm">
-              <div class="day-sm">${fd.dayNum}</div>
-              <div class="month-sm">${fd.month}</div>
-            </div>
+          <div class="card-compact" onclick="window.toggleSession('${s.id}')" title="Klik om uit te klappen">
+            <div class="date-block-sm"><div class="day-sm">${fd.dayNum}</div><div class="month-sm">${fd.month}</div></div>
             <div class="compact-info">
               <div class="compact-datetime">${s.time} uur · ${fd.weekday}</div>
               <div class="compact-loc">${esc(s.loc)}</div>
@@ -885,9 +876,7 @@
             </div>
           </div>
         </div>`;
-      }
 
-      // Expanded
       const guestLabel = s.guestActive && s.guestName.trim() ? s.guestName : "Gast";
       const noteOpen   = openNoteIds.has(s.id);
       const hasNote    = !!s.note;
@@ -895,33 +884,22 @@
       const locDisplay = editingLocationId === s.id
         ? `<select id="loc-sel-${s.id}" class="loc-inline-select"
                onclick="event.stopPropagation()"
-               onchange="commitLocation('${s.id}', this.value)"
-               onblur="commitLocation('${s.id}', this.value)">
-             ${allLocOptions().map(l => `<option value="${esc(l)}" ${l === s.loc ? "selected" : ""}>${esc(l)}</option>`).join("")}
+               onchange="window.commitLocation('${s.id}', this.value)"
+               onblur="window.commitLocation('${s.id}', this.value)">
+             ${allLocOptions().map(l => `<option value="${esc(l)}" ${l===s.loc?"selected":""}>${esc(l)}</option>`).join("")}
            </select>`
-        : `<span class="loc-clickable" onclick="event.stopPropagation(); startEditLocation('${s.id}')" title="Klik om locatie te wijzigen">${esc(s.loc)}</span>`;
+        : `<span class="loc-clickable" onclick="event.stopPropagation(); window.startEditLocation('${s.id}')" title="Klik om locatie te wijzigen">${esc(s.loc)}</span>`;
 
       const playerChips = PLAYERS.map(p => {
         const active = s.attendees.includes(p);
-        return `<div class="player-chip ${active ? "active" : ""}" onclick="toggleAttendee('${s.id}','${p}')"><span class="chip-dot"></span>${p}</div>`;
+        return `<div class="player-chip ${active?"active":""}" onclick="window.toggleAttendee('${s.id}','${p}')"><span class="chip-dot"></span>${p}</div>`;
       }).join("");
-
-      const noteSection = noteOpen ? `
-        <div class="note-section">
-          <p class="note-label">Notitie</p>
-          <textarea class="note-textarea" id="note-ta-${s.id}"
-            placeholder="Baan nummer, bijzonderheden..."
-            oninput="updateNote('${s.id}', this.value)">${esc(s.note)}</textarea>
-        </div>` : "";
 
       return `
       <div class="session-card">
         <div class="card-header">
-          <div class="card-date-info" onclick="toggleSession('${s.id}')" title="Klik om in te klappen" style="cursor:pointer">
-            <div class="date-block">
-              <div class="day">${fd.dayNum}</div>
-              <div class="month">${fd.month}</div>
-            </div>
+          <div class="card-date-info" onclick="window.toggleSession('${s.id}')" style="cursor:pointer" title="Klik om in te klappen">
+            <div class="date-block"><div class="day">${fd.dayNum}</div><div class="month">${fd.month}</div></div>
             <div class="date-meta">
               <div class="time">${s.time} uur · ${fd.weekday}</div>
               <div class="loc">
@@ -931,42 +909,52 @@
             </div>
           </div>
           <div class="card-actions">
-            <span class="status-badge ${s.status}" onclick="toggleStatus('${s.id}')" title="Klik om status te wijzigen">${STATUS_LABELS[s.status]}</span>
-            <button class="btn-icon ${hasNote ? "note-active" : ""}" onclick="toggleNote('${s.id}')" title="${noteOpen ? "Notitie verbergen" : "Notitie toevoegen"}">
+            <span class="status-badge ${s.status}" onclick="window.toggleStatus('${s.id}')" title="Klik om status te wijzigen">${STATUS_LABELS[s.status]}</span>
+            <button class="btn-icon ${hasNote?"note-active":""}" onclick="window.toggleNote('${s.id}')" title="${noteOpen?"Notitie verbergen":"Notitie toevoegen"}">
               <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
                 <rect x="2" y="1.5" width="11" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/>
                 <path d="M4.5 5h6M4.5 7.5h6M4.5 10h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-                ${hasNote ? `<circle cx="12" cy="3" r="2.5" fill="var(--cyan)"/>` : ""}
+                ${hasNote?`<circle cx="12" cy="3" r="2.5" fill="var(--cyan)"/>`:""}
               </svg>
             </button>
-            <button class="btn-icon delete" onclick="deleteSession('${s.id}')" title="Verwijderen">
+            <button class="btn-icon delete" onclick="window.deleteSession('${s.id}')" title="Verwijderen">
               <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M1 3.5h13M5 3.5V2h5v1.5M6 6.5v4M9 6.5v4M2 3.5l.9 9.1A1 1 0 0 0 3.9 13.5h7.2a1 1 0 0 0 1-.9l.9-9.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </div>
         </div>
         <div class="card-body">
-          <div class="player-count ${cClass}">${count === NEEDED ? `✓ ${count}/${NEEDED} spelers` : count > NEEDED ? `⚠ ${count}/${NEEDED} — te veel` : `${count}/${NEEDED} spelers`}</div>
+          <div class="player-count ${cClass}">${count===NEEDED?`✓ ${count}/${NEEDED} spelers`:count>NEEDED?`⚠ ${count}/${NEEDED} — te veel`:`${count}/${NEEDED} spelers`}</div>
           <p class="players-label">Spelers</p>
           <div class="players-grid">
             ${playerChips}
             <div class="guest-row">
-              <div class="guest-chip-toggle ${s.guestActive ? "active" : ""}" onclick="toggleGuest('${s.id}')">
+              <div class="guest-chip-toggle ${s.guestActive?"active":""}" onclick="window.toggleGuest('${s.id}')">
                 <span class="chip-dot"></span>${guestLabel}
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="margin-left:2px;opacity:.6"><circle cx="5" cy="3" r="2" stroke="currentColor" stroke-width="1.4"/><path d="M1 9c0-2.21 1.79-4 4-4s4 1.79 4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
               </div>
-              ${s.guestActive ? `<input class="guest-name-input" id="guest-input-${s.id}" type="text" placeholder="Naam gast..." value="${esc(s.guestName)}" oninput="updateGuestName('${s.id}', this.value)" />` : ""}
+              ${s.guestActive?`<input class="guest-name-input" id="guest-input-${s.id}" type="text" placeholder="Naam gast..." value="${esc(s.guestName)}" oninput="window.updateGuestName('${s.id}', this.value)" />`:""}
             </div>
           </div>
         </div>
-        ${noteSection}
+        ${noteOpen?`<div class="note-section"><p class="note-label">Notitie</p>
+          <textarea class="note-textarea" id="note-ta-${s.id}" placeholder="Baan nummer, bijzonderheden..."
+            oninput="window.updateNote('${s.id}', this.value)">${esc(s.note)}</textarea></div>`:""}
       </div>`;
     }).join("");
   }
 
   document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); closeSettings(); } });
 
+  /* ── Expose to global scope (required for inline onclick handlers in module scripts) ── */
+  Object.assign(window, {
+    openModal, closeModal, handleOverlayClick, addSession,
+    deleteSession, toggleAttendee, toggleGuest, updateGuestName,
+    toggleStatus, startEditLocation, commitLocation,
+    toggleNote, updateNote, toggleSession, toggleCollapse,
+    applyFilters, openSettings, closeSettings, addLocation, deleteLocation
+  });
+
   refreshFilterSelects();
-  render();
 </script>
 </body>
 </html>
