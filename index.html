@@ -79,6 +79,26 @@
     }
     .filter-group { display: flex; align-items: center; gap: 8px; flex: 1; flex-wrap: wrap; }
 
+    .status-filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .status-filter-chip {
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .4px;
+      cursor: pointer;
+      border: 2px solid var(--border);
+      background: var(--white);
+      color: var(--muted);
+      transition: all .15s;
+      white-space: nowrap;
+    }
+    .status-filter-chip:hover { border-color: var(--navy); color: var(--navy); }
+    .status-filter-chip.optie.active      { background: #FFF8E6; color: #B87A00; border-color: #FFE5A0; }
+    .status-filter-chip.te-boeken.active  { background: var(--bg); color: var(--muted); border-color: var(--navy); }
+    .status-filter-chip.geboekt.active    { background: #E6FAFA; color: #007A7A; border-color: #A0E8E8; }
+    .status-filter-chip.competitie.active { background: var(--navy); color: var(--white); border-color: var(--navy); }
+
     .filter-select {
       padding: 7px 10px;
       border: 2px solid var(--border);
@@ -553,12 +573,12 @@
   <!-- Toolbar: filters + collapse toggle -->
   <div class="toolbar">
     <div class="filter-group">
-      <select id="filter-status" class="filter-select" onchange="applyFilters()">
-        <option value="">Alle statussen</option>
-        <option value="optie">Optie</option>
-        <option value="te-boeken">Te boeken</option>
-        <option value="geboekt">Geboekt</option>
-      </select>
+      <div class="status-filter-chips">
+        <button class="status-filter-chip optie"      onclick="window.toggleStatusFilter('optie')"      id="sf-optie">Optie</button>
+        <button class="status-filter-chip te-boeken"  onclick="window.toggleStatusFilter('te-boeken')"  id="sf-te-boeken">Te boeken</button>
+        <button class="status-filter-chip geboekt"    onclick="window.toggleStatusFilter('geboekt')"    id="sf-geboekt">Geboekt</button>
+        <button class="status-filter-chip competitie" onclick="window.toggleStatusFilter('competitie')" id="sf-competitie">Competitie</button>
+      </div>
       <select id="filter-player" class="filter-select" onchange="applyFilters()">
         <option value="">Alle spelers</option>
       </select>
@@ -682,7 +702,7 @@
   let expandedIds       = new Set();
   let editingLocationId = null;
   let openNoteIds       = new Set();
-  let filterStatus      = "";
+  let filterStatuses    = new Set();
   let filterPlayer      = "";
   let filterLocation    = "";
 
@@ -817,11 +837,16 @@
   }
 
   /* ── Filters ── */
+  function toggleStatusFilter(status) {
+    if (filterStatuses.has(status)) filterStatuses.delete(status);
+    else filterStatuses.add(status);
+    document.getElementById("sf-" + status).classList.toggle("active", filterStatuses.has(status));
+    render();
+  }
+
   function applyFilters() {
-    filterStatus   = document.getElementById("filter-status").value;
     filterPlayer   = document.getElementById("filter-player").value;
     filterLocation = document.getElementById("filter-location").value;
-    document.getElementById("filter-status").classList.toggle("has-value",   filterStatus   !== "");
     document.getElementById("filter-player").classList.toggle("has-value",   filterPlayer   !== "");
     document.getElementById("filter-location").classList.toggle("has-value", filterLocation !== "");
     render();
@@ -887,7 +912,7 @@
     syncCollapseBtn();
 
     let filtered = [...sessions].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-    if (filterStatus)   filtered = filtered.filter(s => s.status === filterStatus);
+    if (filterStatuses.size > 0) filtered = filtered.filter(s => filterStatuses.has(s.status));
     if (filterPlayer)   filtered = filtered.filter(s => filterPlayer === "gast" ? (s.guestActive && s.guestName.trim()) : s.attendees.includes(filterPlayer));
     if (filterLocation) filtered = filtered.filter(s => s.loc === filterLocation);
 
@@ -991,7 +1016,7 @@
   /* ── Expose to global scope (required for inline onclick handlers in module scripts) ── */
   Object.assign(window, {
     openModal, closeModal, handleOverlayClick, addSession,
-    deleteSession, cycleAvailability, toggleGuest, updateGuestName,
+    deleteSession, cycleAvailability, toggleGuest, updateGuestName, toggleStatusFilter,
     toggleStatus, startEditLocation, commitLocation,
     toggleNote, updateNote, toggleSession, toggleCollapse,
     applyFilters, openSettings, closeSettings, addLocation, deleteLocation
