@@ -284,8 +284,12 @@
       user-select: none;
     }
     .player-chip:hover { border-color: var(--cyan); background: rgba(0,200,200,.06); }
-    .player-chip.active { background: var(--navy); border-color: var(--navy); color: var(--white); }
+    .player-chip.active      { background: var(--navy); border-color: var(--navy); color: var(--white); }
     .player-chip.active .chip-dot { background: var(--cyan); }
+    .player-chip.uncertain   { background: #FFF3E0; border-color: #F5A623; color: #9A4F00; }
+    .player-chip.uncertain .chip-dot { background: #F5A623; }
+    .player-chip.unavailable { background: #FDECEA; border-color: #E05555; color: #A00020; text-decoration: line-through; }
+    .player-chip.unavailable .chip-dot { background: #E05555; }
     .chip-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0; transition: background .15s; }
     .player-chip:hover .chip-dot { background: var(--cyan); }
 
@@ -668,6 +672,7 @@
   const DEFAULT_LOCS  = ["Racketsport Schiedam", "Nieuw Meerslot", "Meerzicht Zoetermeer"];
   const STATUS_CYCLE  = ["optie", "te-boeken", "geboekt", "competitie"];
   const STATUS_LABELS = { optie: "Optie", "te-boeken": "Te boeken", geboekt: "✓ Geboekt", competitie: "Competitie" };
+  const AVAIL_CYCLE   = [null, "available", "uncertain", "unavailable"];
 
   /* ── State ── */
   let sessions  = [];
@@ -693,10 +698,15 @@
 
   /* ── Real-time listener — drives all rendering ── */
   onSnapshot(sessionsCol, snapshot => {
-    sessions = snapshot.docs.map(d => ({
-      note: "", guestActive: false, guestName: "", attendees: [],
-      ...d.data(), id: d.id
-    }));
+    sessions = snapshot.docs.map(d => {
+      const data = d.data();
+      // migrate old attendees array → availability object
+      let availability = data.availability || {};
+      if (data.attendees && !data.availability) {
+        data.attendees.forEach(p => { availability[p] = "available"; });
+      }
+      return { note: "", guestActive: false, guestName: "", availability: {}, ...data, availability, id: d.id };
+    });
     render();
     refreshFilterSelects();
   }, err => console.error("Firestore:", err));
@@ -724,7 +734,7 @@
     const status = document.getElementById("f-status").value;
     if (!date || !time) { alert("Vul een datum en tijd in."); return; }
     closeModal();
-    await fsAdd({ date, time, loc, status, attendees: [], guestActive: false, guestName: "", note: "" });
+    await fsAdd({ date, time, loc, status, availability: {}, guestActive: false, guestName: "", note: "" });
   }
 
   /* ── Session mutations (optimistic local update + Firestore write) ── */
@@ -736,12 +746,14 @@
     await fsDelete(id);
   }
 
-  function toggleAttendee(sessionId, player) {
+  function cycleAvailability(sessionId, player) {
     const s = sessions.find(s => s.id === sessionId); if (!s) return;
-    const idx = s.attendees.indexOf(player);
-    if (idx === -1) s.attendees.push(player); else s.attendees.splice(idx, 1);
+    if (!s.availability) s.availability = {};
+    const cur  = s.availability[player] || null;
+    const next = AVAIL_CYCLE[(AVAIL_CYCLE.indexOf(cur) + 1) % AVAIL_CYCLE.length];
+    if (next === null) delete s.availability[player]; else s.availability[player] = next;
     render();
-    fsUpdate(sessionId, { attendees: s.attendees });
+    fsUpdate(sessionId, { availability: s.availability });
   }
 
   function toggleGuest(sessionId) {
@@ -858,7 +870,10 @@
     return { dayNum: d.getDate(), month: ["jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"][d.getMonth()], weekday: ["zo","ma","di","wo","do","vr","za"][d.getDay()] };
   }
   function esc(str) { return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-  function playerCount(s) { return s.attendees.length + (s.guestActive && s.guestName.trim() ? 1 : 0); }
+  function playerCount(s) {
+    const avail = s.availability || {};
+    return PLAYERS.filter(p => avail[p] === "available").length + (s.guestActive && s.guestName.trim() ? 1 : 0);
+  }
 
   function syncCollapseBtn() {
     const any = expandedIds.size > 0;
@@ -916,9 +931,11 @@
            </select>`
         : `<span class="loc-clickable" onclick="event.stopPropagation(); window.startEditLocation('${s.id}')" title="Klik om locatie te wijzigen">${esc(s.loc)}</span>`;
 
+      const avail = s.availability || {};
       const playerChips = PLAYERS.map(p => {
-        const active = s.attendees.includes(p);
-        return `<div class="player-chip ${active?"active":""}" onclick="window.toggleAttendee('${s.id}','${p}')"><span class="chip-dot"></span>${p}</div>`;
+        const state = avail[p] || null;
+        const cls   = state === "available" ? "active" : state === "uncertain" ? "uncertain" : state === "unavailable" ? "unavailable" : "";
+        return `<div class="player-chip ${cls}" onclick="window.cycleAvailability('${s.id}','${p}')"><span class="chip-dot"></span>${p}</div>`;
       }).join("");
 
       return `
@@ -974,7 +991,7 @@
   /* ── Expose to global scope (required for inline onclick handlers in module scripts) ── */
   Object.assign(window, {
     openModal, closeModal, handleOverlayClick, addSession,
-    deleteSession, toggleAttendee, toggleGuest, updateGuestName,
+    deleteSession, cycleAvailability, toggleGuest, updateGuestName,
     toggleStatus, startEditLocation, commitLocation,
     toggleNote, updateNote, toggleSession, toggleCollapse,
     applyFilters, openSettings, closeSettings, addLocation, deleteLocation
