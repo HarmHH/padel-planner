@@ -369,6 +369,9 @@
     }
     .date-block-sm .day-sm { font-size: 17px; font-weight: 800; line-height: 1; }
     .date-block-sm .month-sm { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--cyan); margin-top: 1px; }
+    .date-block-sm.competitie { background: var(--cyan); }
+    .date-block-sm.competitie .day-sm { color: var(--navy-dark); }
+    .date-block-sm.competitie .month-sm { color: var(--navy); }
     .compact-info { flex: 1; min-width: 0; }
     .compact-datetime { font-size: 14px; font-weight: 700; color: var(--navy-dark); }
     .compact-loc { font-size: 12px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -888,7 +891,7 @@
       if (!expandedIds.has(s.id)) return `
         <div class="session-card">
           <div class="card-compact" onclick="window.toggleSession('${s.id}')" title="Klik om uit te klappen">
-            <div class="date-block-sm"><div class="day-sm">${fd.dayNum}</div><div class="month-sm">${fd.month}</div></div>
+            <div class="date-block-sm ${s.status === 'competitie' ? 'competitie' : ''}"><div class="day-sm">${fd.dayNum}</div><div class="month-sm">${fd.month}</div></div>
             <div class="compact-info">
               <div class="compact-datetime">${s.time} uur · ${fd.weekday}</div>
               <div class="compact-loc">${esc(s.loc)}</div>
