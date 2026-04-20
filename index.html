@@ -894,11 +894,12 @@
 
       const locDisplay = editingLocationId === s.id
         ? `<select id="loc-sel-${s.id}" class="loc-inline-select"
+               onclick="event.stopPropagation()"
                onchange="commitLocation('${s.id}', this.value)"
                onblur="commitLocation('${s.id}', this.value)">
              ${allLocOptions().map(l => `<option value="${esc(l)}" ${l === s.loc ? "selected" : ""}>${esc(l)}</option>`).join("")}
            </select>`
-        : `<span class="loc-clickable" onclick="startEditLocation('${s.id}')" title="Klik om locatie te wijzigen">${esc(s.loc)}</span>`;
+        : `<span class="loc-clickable" onclick="event.stopPropagation(); startEditLocation('${s.id}')" title="Klik om locatie te wijzigen">${esc(s.loc)}</span>`;
 
       const playerChips = PLAYERS.map(p => {
         const active = s.attendees.includes(p);
