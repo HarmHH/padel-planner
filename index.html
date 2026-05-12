@@ -175,7 +175,29 @@
     .date-block .day { font-size: 22px; font-weight: 800; line-height: 1; }
     .date-block .month { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--cyan); margin-top: 2px; }
     .date-meta { flex: 1; min-width: 0; }
-    .date-meta .time { font-size: 16px; font-weight: 700; }
+    .date-meta .time { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+    .time-clickable {
+      cursor: pointer;
+      border-bottom: 1px dashed rgba(255,255,255,.35);
+      transition: color .15s, border-color .15s;
+      white-space: nowrap;
+    }
+    .time-clickable:hover { color: var(--white); border-bottom-color: var(--cyan); }
+    .time-inline-input {
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.35);
+      color: var(--white);
+      border-radius: 5px;
+      padding: 2px 6px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: inherit;
+      outline: none;
+      width: 90px;
+    }
+    .card-header.competitie .time-clickable { border-bottom-color: rgba(11,45,92,.25); }
+    .card-header.competitie .time-clickable:hover { color: var(--navy-dark); border-bottom-color: var(--cyan); }
+    .card-header.competitie .time-inline-input { background: rgba(11,45,92,.06); border-color: var(--border); color: var(--navy-dark); }
     .date-meta .loc {
       font-size: 12px;
       color: rgba(255,255,255,.65);
@@ -701,6 +723,7 @@
 
   let expandedIds       = new Set();
   let editingLocationId = null;
+  let editingTimeId     = null;
   let openNoteIds       = new Set();
   let filterStatuses    = new Set();
   let filterPlayer      = "";
@@ -797,6 +820,19 @@
     s.status = STATUS_CYCLE[(STATUS_CYCLE.indexOf(s.status) + 1) % STATUS_CYCLE.length];
     render();
     fsUpdate(sessionId, { status: s.status });
+  }
+
+  function startEditTime(sessionId) {
+    editingTimeId = sessionId; render();
+    setTimeout(() => { document.getElementById("time-input-" + sessionId)?.focus(); }, 20);
+  }
+
+  function commitTime(sessionId, value) {
+    if (value) {
+      const s = sessions.find(s => s.id === sessionId);
+      if (s) { s.time = value; fsUpdate(sessionId, { time: value }); }
+    }
+    editingTimeId = null; render();
   }
 
   function startEditLocation(sessionId) {
@@ -971,7 +1007,16 @@
           <div class="card-date-info" onclick="window.toggleSession('${s.id}')" style="cursor:pointer" title="Klik om in te klappen">
             <div class="date-block"><div class="day">${fd.dayNum}</div><div class="month">${fd.month}</div></div>
             <div class="date-meta">
-              <div class="time">${s.time} uur · ${fd.weekday}</div>
+              <div class="time">
+                ${editingTimeId === s.id
+                  ? `<input id="time-input-${s.id}" type="time" class="time-inline-input" value="${esc(s.time)}"
+                       onclick="event.stopPropagation()"
+                       onchange="window.commitTime('${s.id}', this.value)"
+                       onblur="window.commitTime('${s.id}', this.value)" />`
+                  : `<span class="time-clickable" onclick="event.stopPropagation(); window.startEditTime('${s.id}')" title="Klik om tijd te wijzigen">${s.time} uur</span>`
+                }
+                · ${fd.weekday}
+              </div>
               <div class="loc">
                 <svg class="loc-pin" width="10" height="13" viewBox="0 0 11 13" fill="none"><path d="M5.5 0C3.01 0 1 2.01 1 4.5c0 3.37 4.5 8.5 4.5 8.5S10 7.87 10 4.5C10 2.01 7.99 0 5.5 0Zm0 6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z" fill="currentColor"/></svg>
                 ${locDisplay}
@@ -1019,7 +1064,7 @@
   Object.assign(window, {
     openModal, closeModal, handleOverlayClick, addSession,
     deleteSession, cycleAvailability, toggleGuest, updateGuestName, toggleStatusFilter,
-    toggleStatus, startEditLocation, commitLocation,
+    toggleStatus, startEditTime, commitTime, startEditLocation, commitLocation,
     toggleNote, updateNote, toggleSession, toggleCollapse,
     applyFilters, openSettings, closeSettings, addLocation, deleteLocation
   });
